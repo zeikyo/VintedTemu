@@ -157,19 +157,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
       input.quantity_bought,
       input.shipping_cost,
     )
+
+    if (!isDemo && isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('products')
+        .insert({
+          ...input,
+          user_id: user.id,
+          unit_cost: unitCost,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      setProducts((current) => [data, ...current])
+      return data
+    }
+
     const product: Product = {
       ...input,
       id: uid(),
       user_id: user.id,
       unit_cost: unitCost,
       created_at: new Date().toISOString(),
-    }
-
-    if (!isDemo && isSupabaseConfigured) {
-      const { data, error } = await supabase.from('products').insert(product).select().single()
-      if (error) throw error
-      setProducts((current) => [data, ...current])
-      return data
     }
     setProducts((current) => [product, ...current])
     return product
@@ -205,10 +214,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const product = products.find((item) => item.id === input.product_id)
     if (!product || product.stock_remaining < 1) throw new Error('Stock insuffisant')
     const computed = calculateSale(input, product)
-    const sale: Sale = { ...input, ...computed, id: uid(), user_id: user.id }
 
     if (!isDemo && isSupabaseConfigured) {
-      const { data, error } = await supabase.from('sales').insert(sale).select().single()
+      const { data, error } = await supabase
+        .from('sales')
+        .insert({ ...input, ...computed, user_id: user.id })
+        .select()
+        .single()
       if (error) throw error
       const nextSales = [data, ...sales]
       const nextStock = expectedStock(product, nextSales)
@@ -223,7 +235,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
           item.id === product.id ? { ...item, stock_remaining: nextStock } : item,
         ),
       )
+      return data
     } else {
+      const sale: Sale = { ...input, ...computed, id: uid(), user_id: user.id }
       const nextSales = [sale, ...sales]
       const nextStock = expectedStock(product, nextSales)
       setSales(nextSales)
@@ -232,8 +246,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           item.id === product.id ? { ...item, stock_remaining: nextStock } : item,
         ),
       )
+      return sale
     }
-    return sale
   }
 
   const updateSaleStatus = async (id: string, status: Sale['status']) => {
@@ -294,13 +308,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addExpense = async (input: ExpenseInput) => {
     if (!user) throw new Error('Utilisateur non connecté')
-    const expense: Expense = { ...input, id: uid(), user_id: user.id }
     if (!isDemo && isSupabaseConfigured) {
-      const { data, error } = await supabase.from('expenses').insert(expense).select().single()
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert({ ...input, user_id: user.id })
+        .select()
+        .single()
       if (error) throw error
       setExpenses((items) => [data, ...items])
       return data
     }
+    const expense: Expense = { ...input, id: uid(), user_id: user.id }
     setExpenses((items) => [expense, ...items])
     return expense
   }
