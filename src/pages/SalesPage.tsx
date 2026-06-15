@@ -12,11 +12,20 @@ import { useData } from '../context/DataContext'
 import { formatCurrency, formatDate, formatNumber, profitability } from '../lib/utils'
 import type { Sale, SaleStatus } from '../types'
 
-const statusTone: Record<SaleStatus, 'gray' | 'blue' | 'emerald' | 'rose'> = {
+const statusTone: Record<SaleStatus, 'gray' | 'blue' | 'emerald' | 'rose' | 'purple'> = {
   vendu: 'gray',
   envoyé: 'blue',
   payé: 'emerald',
   remboursé: 'rose',
+  offert: 'purple',
+}
+
+const statusLabel: Record<SaleStatus, string> = {
+  vendu: 'Vendu',
+  envoyé: 'Envoyé',
+  payé: 'Payé',
+  remboursé: 'Remboursé',
+  offert: 'Cadeau',
 }
 
 export function SalesPage() {
@@ -74,7 +83,12 @@ export function SalesPage() {
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <img src={product?.photo_url || ''} alt="" className="size-10 rounded-xl bg-gray-100 object-cover" />
-                          <div><p className="text-sm font-bold text-ink">{productName(sale.product_id)}</p><Badge tone={performance.tone}>{performance.label}</Badge></div>
+                          <div>
+                            <p className="text-sm font-bold text-ink">{productName(sale.product_id)}</p>
+                            <Badge tone={sale.status === 'offert' ? 'purple' : performance.tone}>
+                              {sale.status === 'offert' ? 'Cadeau' : performance.label}
+                            </Badge>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-sm font-semibold text-gray-600">{sale.sale_platform}</td>
@@ -91,7 +105,9 @@ export function SalesPage() {
                             toast.success('Statut mis à jour')
                           }}
                         >
-                          {Object.keys(statusTone).map((status) => <option key={status} value={status}>{status[0].toUpperCase() + status.slice(1)}</option>)}
+                          {(Object.keys(statusTone) as SaleStatus[]).map((status) => (
+                            <option key={status} value={status}>{statusLabel[status]}</option>
+                          ))}
                         </Select>
                       </td>
                       <td className="px-5 py-3.5 text-right">
@@ -107,7 +123,7 @@ export function SalesPage() {
       </Card>
       <div className="mt-4 flex flex-wrap gap-2">
         {(Object.entries(statusTone) as [SaleStatus, typeof statusTone[SaleStatus]][]).map(([status, tone]) => (
-          <Badge key={status} tone={tone} dot>{status[0].toUpperCase() + status.slice(1)}</Badge>
+          <Badge key={status} tone={tone} dot>{statusLabel[status]}</Badge>
         ))}
       </div>
       <ConfirmDialog

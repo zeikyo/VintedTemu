@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ArrowRight, BarChart3, CircleDollarSign, Eye, EyeOff, PackageCheck } from 'lucide-react'
+import { ArrowRight, BarChart3, CheckCircle2, CircleDollarSign, Eye, EyeOff, Mail, PackageCheck } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -17,9 +17,10 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export function LoginPage() {
-  const { signIn, signUp, enterDemo } = useAuth()
+  const { signIn, signUp, resendConfirmation, enterDemo } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [pendingEmail, setPendingEmail] = useState('')
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   return (
@@ -41,6 +42,46 @@ export function LoginPage() {
       <div className="grid place-items-center p-5 sm:p-10">
         <div className="w-full max-w-md">
           <div className="mb-9 flex items-center gap-3 lg:hidden"><div className="grid size-10 place-items-center rounded-xl bg-moss text-lime"><CircleDollarSign className="size-6" /></div><p className="text-lg font-extrabold">StockPilot</p></div>
+          {pendingEmail ? (
+            <div className="rounded-2xl border border-line bg-white p-6 text-center">
+              <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-mint text-moss">
+                <Mail className="size-7" />
+              </div>
+              <h2 className="mt-5 text-2xl font-extrabold tracking-tight">Vérifiez votre e-mail</h2>
+              <p className="mt-3 text-sm leading-6 text-gray-500">
+                Un lien de confirmation a été envoyé à <strong>{pendingEmail}</strong>.
+                Ouvrez-le sur cet appareil pour activer le compte.
+              </p>
+              <div className="mt-6 flex items-center justify-center gap-2 text-xs font-semibold text-emerald-700">
+                <CheckCircle2 className="size-4" />
+                Le lien redirigera vers StockPilot
+              </div>
+              <Button
+                variant="secondary"
+                className="mt-6 w-full"
+                onClick={async () => {
+                  try {
+                    await resendConfirmation(pendingEmail)
+                    toast.success('Nouvel e-mail envoyé')
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : 'Envoi impossible')
+                  }
+                }}
+              >
+                Renvoyer l’e-mail
+              </Button>
+              <button
+                className="mt-4 text-sm font-bold text-moss hover:underline"
+                onClick={() => {
+                  setPendingEmail('')
+                  setMode('login')
+                }}
+              >
+                Retour à la connexion
+              </button>
+            </div>
+          ) : (
+          <>
           <h2 className="text-3xl font-extrabold tracking-tight">{mode === 'login' ? 'Bon retour parmi nous' : 'Créer votre espace'}</h2>
           <p className="mt-2 text-sm text-gray-500">{mode === 'login' ? 'Connectez-vous pour retrouver votre activité.' : 'Commencez à suivre votre rentabilité dès aujourd’hui.'}</p>
           <form
@@ -50,6 +91,7 @@ export function LoginPage() {
                 if (mode === 'login') await signIn(data.email, data.password)
                 else {
                   await signUp(data.email, data.password)
+                  setPendingEmail(data.email)
                   toast.success('Compte créé. Vérifiez votre boîte e-mail.')
                 }
               } catch (error) {
@@ -67,6 +109,8 @@ export function LoginPage() {
           <Button variant="secondary" className="w-full" onClick={enterDemo}>Explorer la démo</Button>
           {!isSupabaseConfigured && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-center text-xs leading-5 text-amber-700">Supabase n’est pas encore configuré : le mode démo est ouvert automatiquement.</p>}
           <p className="mt-7 text-center text-sm text-gray-500">{mode === 'login' ? 'Pas encore de compte ?' : 'Déjà un compte ?'} <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} className="font-bold text-moss hover:underline">{mode === 'login' ? 'Créer un compte' : 'Se connecter'}</button></p>
+          </>
+          )}
         </div>
       </div>
     </div>

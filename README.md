@@ -25,7 +25,10 @@ Sans variables Supabase, l'application démarre en mode local avec un espace vid
 
 1. Créer un projet sur Supabase.
 2. Ouvrir `SQL Editor` et exécuter [`supabase/schema.sql`](supabase/schema.sql).
-3. Dans `Authentication > URL Configuration`, ajouter l'URL locale et l'URL Vercel.
+3. Dans `Authentication > URL Configuration` :
+   - définir `Site URL` avec l'URL de production exacte ;
+   - ajouter `https://votre-domaine.fr/auth/callback` dans `Redirect URLs` ;
+   - ajouter `http://localhost:5173/auth/callback` pour le développement local.
 4. Copier l'URL du projet et la clé publique `anon` dans `.env.local` :
 
 ```env
@@ -34,6 +37,16 @@ VITE_SUPABASE_ANON_KEY=votre-cle-anon
 ```
 
 Les politiques RLS du schéma garantissent que chaque utilisateur ne peut lire et modifier que ses propres lignes.
+
+Si les tables ont déjà été créées avec une version antérieure, exécuter plutôt
+[`supabase/migrate-existing.sql`](supabase/migrate-existing.sql). Cette migration
+préserve les données et peut être relancée plusieurs fois.
+
+Si le diagnostic indique uniquement `GRANT MANQUANT`, exécuter le script court
+[`supabase/fix-permissions.sql`](supabase/fix-permissions.sql).
+
+Pour activer le statut cadeau sur une base existante, exécuter
+[`supabase/add-gift-status.sql`](supabase/add-gift-status.sql).
 
 ## Calculs
 
@@ -48,7 +61,8 @@ Les politiques RLS du schéma garantissent que chaque utilisateur ne peut lire e
 2. Le preset Vite est détecté automatiquement.
 3. Ajouter `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` dans `Settings > Environment Variables`.
 4. Déployer.
-5. Ajouter l'URL finale Vercel aux Redirect URLs dans Supabase Auth.
+5. Dans Supabase Auth, définir l'URL finale comme `Site URL` et ajouter
+   `https://votre-url-vercel.app/auth/callback` aux `Redirect URLs`.
 
 Le fichier `vercel.json` redirige toutes les routes vers React Router.
 
@@ -57,6 +71,7 @@ Le fichier `vercel.json` redirige toutes les routes vers React Router.
 ```bash
 npm run dev
 npm run build
+npm run check:supabase
 npm run lint
 npm run preview
 ```

@@ -7,6 +7,7 @@ import { LoadingScreen } from './components/LoadingScreen'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { DataProvider } from './context/DataContext'
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
+const AuthCallbackPage = lazy(() => import('./pages/AuthCallbackPage').then((module) => ({ default: module.AuthCallbackPage })))
 const ExpensesPage = lazy(() => import('./pages/ExpensesPage').then((module) => ({ default: module.ExpensesPage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const ProductFormPage = lazy(() => import('./pages/ProductFormPage').then((module) => ({ default: module.ProductFormPage })))
@@ -19,12 +20,20 @@ const StatisticsPage = lazy(() => import('./pages/StatisticsPage').then((module)
 function AppRoutes() {
   const { user, loading } = useAuth()
   if (loading) return <LoadingScreen />
-  if (!user) return <Suspense fallback={<LoadingScreen />}><Routes><Route path="*" element={<LoginPage />} /></Routes></Suspense>
+  if (!user) return (
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route path="*" element={<LoginPage />} />
+      </Routes>
+    </Suspense>
+  )
 
   return (
     <DataProvider>
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route element={<AppLayout />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/produits" element={<ProductsPage />} />

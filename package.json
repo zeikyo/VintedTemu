@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:supabase": "node scripts/check-supabase.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

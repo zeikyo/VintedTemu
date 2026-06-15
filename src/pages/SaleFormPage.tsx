@@ -13,17 +13,27 @@ import { useData } from '../context/DataContext'
 import { calculateSale } from '../lib/calculations'
 import { formatCurrency, formatNumber, profitability } from '../lib/utils'
 
-const schema = z.object({
-  product_id: z.string().min(1, 'Choisissez un produit'),
-  sale_platform: z.string().min(1, 'Choisissez une plateforme'),
-  sale_price: z.number().positive('Le prix doit être positif'),
-  discount: z.number().min(0),
-  fees: z.number().min(0),
-  shipping_paid_by_me: z.number().min(0),
-  packaging_cost: z.number().min(0),
-  sale_date: z.string().min(1, 'La date est obligatoire'),
-  status: z.enum(['vendu', 'envoyé', 'payé', 'remboursé']),
-})
+const schema = z
+  .object({
+    product_id: z.string().min(1, 'Choisissez un produit'),
+    sale_platform: z.string().min(1, 'Choisissez une plateforme'),
+    sale_price: z.number().min(0, 'Le prix ne peut pas être négatif'),
+    discount: z.number().min(0),
+    fees: z.number().min(0),
+    shipping_paid_by_me: z.number().min(0),
+    packaging_cost: z.number().min(0),
+    sale_date: z.string().min(1, 'La date est obligatoire'),
+    status: z.enum(['vendu', 'envoyé', 'payé', 'remboursé', 'offert']),
+  })
+  .superRefine((data, context) => {
+    if (data.status !== 'offert' && data.sale_price <= 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['sale_price'],
+        message: 'Le prix doit être positif, sauf pour un cadeau',
+      })
+    }
+  })
 
 type FormValues = z.infer<typeof schema>
 
@@ -105,11 +115,22 @@ export function SaleFormPage() {
               </Select>
             </FieldShell>
             <FieldShell label="Statut *" error={errors.status?.message}>
-              <Select {...register('status')}>
+              <Select
+                {...register('status')}
+                onChange={(event) => {
+                  register('status').onChange(event)
+                  if (event.target.value === 'offert') {
+                    setValue('sale_price', 0)
+                    setValue('discount', 0)
+                    setValue('fees', 0)
+                  }
+                }}
+              >
                 <option value="vendu">Vendu</option>
                 <option value="envoyé">Envoyé</option>
                 <option value="payé">Payé</option>
                 <option value="remboursé">Remboursé</option>
+                <option value="offert">Offert / Cadeau</option>
               </Select>
             </FieldShell>
             <FieldShell label="Prix de vente *" error={errors.sale_price?.message}>

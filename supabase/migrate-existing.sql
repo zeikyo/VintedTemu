@@ -1,102 +1,6 @@
--- StockPilot - schéma Supabase complet
--- À exécuter dans Supabase > SQL Editor.
+-- StockPilot - migration pour un projet Supabase déjà initialisé.
+-- Ce script est réexécutable sans supprimer les données existantes.
 
-create extension if not exists "pgcrypto";
-
-create table if not exists public.products (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  name text not null,
-  category text not null,
-  size text,
-  color text,
-  purchase_platform text not null,
-  purchase_link text,
-  total_purchase_price numeric(12, 2) not null check (total_purchase_price >= 0),
-  quantity_bought integer not null check (quantity_bought > 0),
-  unit_cost numeric(12, 2) not null default 0,
-  shipping_cost numeric(12, 2) not null default 0 check (shipping_cost >= 0),
-  packaging_cost numeric(12, 2) not null default 0 check (packaging_cost >= 0),
-  stock_remaining integer not null check (stock_remaining >= 0),
-  photo_url text,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.sales (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  product_id uuid not null references public.products(id) on delete cascade,
-  sale_platform text not null,
-  sale_price numeric(12, 2) not null check (sale_price >= 0),
-  discount numeric(12, 2) not null default 0 check (discount >= 0),
-  fees numeric(12, 2) not null default 0 check (fees >= 0),
-  shipping_paid_by_me numeric(12, 2) not null default 0 check (shipping_paid_by_me >= 0),
-  packaging_cost numeric(12, 2) not null default 0 check (packaging_cost >= 0),
-  net_profit numeric(12, 2) not null default 0,
-  roi numeric(12, 2) not null default 0,
-  sale_date date not null default current_date,
-  status text not null default 'vendu' check (status in ('vendu', 'envoyé', 'payé', 'remboursé', 'offert'))
-);
-
-create table if not exists public.expenses (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  name text not null,
-  amount numeric(12, 2) not null check (amount >= 0),
-  category text not null,
-  date date not null default current_date,
-  note text
-);
-
-create table if not exists public.platforms (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  name text not null,
-  type text not null default 'les deux' check (type in ('achat', 'vente', 'les deux')),
-  created_at timestamptz not null default now(),
-  unique (user_id, name)
-);
-
-create table if not exists public.categories (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  name text not null,
-  created_at timestamptz not null default now(),
-  unique (user_id, name)
-);
-
-create index if not exists products_user_id_idx on public.products(user_id);
-create index if not exists sales_user_id_idx on public.sales(user_id);
-create index if not exists sales_product_id_idx on public.sales(product_id);
-create index if not exists expenses_user_id_idx on public.expenses(user_id);
-
-create or replace function public.calculate_product_unit_cost()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.unit_cost := round(
-    (new.total_purchase_price + new.shipping_cost) / new.quantity_bought,
-    2
-  );
-  return new;
-end;
-$$;
-
-drop trigger if exists before_product_unit_cost on public.products;
-create trigger before_product_unit_cost
-before insert or update of total_purchase_price, shipping_cost, quantity_bought
-on public.products
-for each row execute function public.calculate_product_unit_cost();
-
-alter table public.products enable row level security;
-alter table public.sales enable row level security;
-alter table public.expenses enable row level security;
-alter table public.platforms enable row level security;
-alter table public.categories enable row level security;
-
--- Autorise les rôles API à atteindre les tables.
--- Les politiques RLS ci-dessous restent responsables de filtrer chaque ligne.
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on table
   public.products,
@@ -105,6 +9,12 @@ grant select, insert, update, delete on table
   public.platforms,
   public.categories
 to anon, authenticated;
+
+alter table public.products enable row level security;
+alter table public.sales enable row level security;
+alter table public.expenses enable row level security;
+alter table public.platforms enable row level security;
+alter table public.categories enable row level security;
 
 drop policy if exists "Users manage their products" on public.products;
 create policy "Users manage their products"
@@ -119,8 +29,10 @@ create policy "Users manage their sales"
   with check (
     auth.uid() = user_id
     and exists (
-      select 1 from public.products
-      where products.id = product_id and products.user_id = auth.uid()
+      select 1
+      from public.products
+      where products.id = product_id
+        and products.user_id = auth.uid()
     )
   );
 
@@ -142,7 +54,25 @@ create policy "Users manage their categories"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- Calcule le bénéfice et le ROI côté base afin de ne pas faire confiance au client.
+create or replace function public.calculate_product_unit_cost()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.unit_cost := round(
+    (new.total_purchase_price + new.shipping_cost) / new.quantity_bought,
+    2
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists before_product_unit_cost on public.products;
+create trigger before_product_unit_cost
+before insert or update of total_purchase_price, shipping_cost, quantity_bought
+on public.products
+for each row execute function public.calculate_product_unit_cost();
+
 create or replace function public.calculate_sale_profit()
 returns trigger
 language plpgsql
@@ -178,7 +108,6 @@ create trigger before_sale_profit
 before insert or update on public.sales
 for each row execute function public.calculate_sale_profit();
 
--- Met le stock à jour dans la même transaction que la vente.
 create or replace function public.sync_product_stock_from_sale()
 returns trigger
 language plpgsql
@@ -221,7 +150,6 @@ create trigger after_sale_delete_stock
 after delete on public.sales
 for each row execute function public.sync_product_stock_from_sale();
 
--- Ajoute les listes de base au premier compte créé.
 create or replace function public.seed_new_user()
 returns trigger
 language plpgsql
@@ -233,12 +161,14 @@ begin
     (new.id, 'Temu', 'achat'),
     (new.id, 'Vinted', 'les deux'),
     (new.id, 'Leboncoin', 'vente'),
-    (new.id, 'eBay', 'vente');
+    (new.id, 'eBay', 'vente')
+  on conflict (user_id, name) do nothing;
 
   insert into public.categories (user_id, name) values
     (new.id, 'Pokémon'),
     (new.id, 'Vêtements'),
-    (new.id, 'Accessoires');
+    (new.id, 'Accessoires')
+  on conflict (user_id, name) do nothing;
   return new;
 end;
 $$;
@@ -248,7 +178,6 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.seed_new_user();
 
--- Initialise aussi les comptes créés avant l'installation de ce schéma.
 insert into public.platforms (user_id, name, type)
 select users.id, defaults.name, defaults.type
 from auth.users as users

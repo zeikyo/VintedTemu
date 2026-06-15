@@ -54,6 +54,13 @@ function getDemoData(): StoredData {
   return { products: [], sales: [], expenses: [] }
 }
 
+function expectedStock(product: Product, sales: Sale[]) {
+  const activeSales = sales.filter(
+    (sale) => sale.product_id === product.id && sale.status !== 'remboursé',
+  ).length
+  return Math.max(0, product.quantity_bought - activeSales)
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, isDemo } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
@@ -99,8 +106,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (error) {
       toast.error(`Impossible de charger les données : ${error.message}`)
     } else {
-      setProducts(productsResult.data ?? [])
-      setSales(salesResult.data ?? [])
+      const loadedProducts = productsResult.data ?? []
+      const loadedSales = salesResult.data ?? []
+      const normalizedProducts = loadedProducts.map((product) => ({
+        ...product,
+        stock_remaining: expectedStock(product, loadedSales),
+      }))
+      const stockCorrections = normalizedProducts.filter((product, index) => {
+        return product.stock_remaining !== loadedProducts[index].stock_remaining
+      })
+
+      if (stockCorrections.length > 0) {
+        const corrections = await Promise.all(
+          stockCorrections.map((product) =>
+            supabase
+              .from('products')
+              .update({ stock_remaining: product.stock_remaining })
+              .eq('id', product.id),
+          ),
+        )
+        const correctionError = corrections.find((result) => result.error)?.error
+        if (correctionError) {
+          toast.error(`Impossible de corriger le stock : ${correctionError.message}`)
+        }
+      }
+
+      setProducts(normalizedProducts)
+      setSales(loadedSales)
       setExpenses(expensesResult.data ?? [])
       setPlatforms(platformsResult.data ?? [])
       setCategories(categoriesResult.data ?? [])
@@ -178,46 +210,86 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!isDemo && isSupabaseConfigured) {
       const { data, error } = await supabase.from('sales').insert(sale).select().single()
       if (error) throw error
+      const nextSales = [data, ...sales]
+      const nextStock = expectedStock(product, nextSales)
       const { error: stockError } = await supabase
         .from('products')
-        .update({ stock_remaining: product.stock_remaining - 1 })
+        .update({ stock_remaining: nextStock })
         .eq('id', product.id)
       if (stockError) throw stockError
-      setSales((items) => [data, ...items])
+      setSales(nextSales)
+      setProducts((items) =>
+        items.map((item) =>
+          item.id === product.id ? { ...item, stock_remaining: nextStock } : item,
+        ),
+      )
     } else {
-      setSales((items) => [sale, ...items])
+      const nextSales = [sale, ...sales]
+      const nextStock = expectedStock(product, nextSales)
+      setSales(nextSales)
+      setProducts((items) =>
+        items.map((item) =>
+          item.id === product.id ? { ...item, stock_remaining: nextStock } : item,
+        ),
+      )
     }
-    setProducts((items) =>
-      items.map((item) =>
-        item.id === product.id ? { ...item, stock_remaining: item.stock_remaining - 1 } : item,
-      ),
-    )
     return sale
   }
 
   const updateSaleStatus = async (id: string, status: Sale['status']) => {
+    const currentSale = sales.find((sale) => sale.id === id)
+    if (!currentSale) return
+    const product = products.find((item) => item.id === currentSale.product_id)
+    const nextSales = sales.map((sale) => (sale.id === id ? { ...sale, status } : sale))
+    const nextStock = product ? expectedStock(product, nextSales) : null
+
     if (!isDemo && isSupabaseConfigured) {
       const { error } = await supabase.from('sales').update({ status }).eq('id', id)
       if (error) throw error
+      if (product && nextStock !== null) {
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ stock_remaining: nextStock })
+          .eq('id', product.id)
+        if (stockError) throw stockError
+      }
     }
-    setSales((items) => items.map((sale) => (sale.id === id ? { ...sale, status } : sale)))
+    setSales(nextSales)
+    if (product && nextStock !== null) {
+      setProducts((items) =>
+        items.map((item) =>
+          item.id === product.id ? { ...item, stock_remaining: nextStock } : item,
+        ),
+      )
+    }
   }
 
   const deleteSale = async (id: string) => {
     const sale = sales.find((item) => item.id === id)
     if (!sale) return
+    const product = products.find((item) => item.id === sale.product_id)
+    const nextSales = sales.filter((item) => item.id !== id)
+    const nextStock = product ? expectedStock(product, nextSales) : null
+
     if (!isDemo && isSupabaseConfigured) {
       const { error } = await supabase.from('sales').delete().eq('id', id)
       if (error) throw error
+      if (product && nextStock !== null) {
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ stock_remaining: nextStock })
+          .eq('id', product.id)
+        if (stockError) throw stockError
+      }
     }
-    setSales((items) => items.filter((item) => item.id !== id))
-    setProducts((items) =>
-      items.map((product) =>
-        product.id === sale.product_id
-          ? { ...product, stock_remaining: product.stock_remaining + 1 }
-          : product,
-      ),
-    )
+    setSales(nextSales)
+    if (product && nextStock !== null) {
+      setProducts((items) =>
+        items.map((item) =>
+          item.id === product.id ? { ...item, stock_remaining: nextStock } : item,
+        ),
+      )
+    }
   }
 
   const addExpense = async (input: ExpenseInput) => {

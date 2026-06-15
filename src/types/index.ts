@@ -1,4 +1,4 @@
-export type SaleStatus = 'vendu' | 'envoyé' | 'payé' | 'remboursé'
+export type SaleStatus = 'vendu' | 'envoyé' | 'payé' | 'remboursé' | 'offert'
 
 export interface Product {
   id: string

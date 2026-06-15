@@ -8,6 +8,7 @@ interface AuthContextValue {
   isDemo: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string) => Promise<void>
+  resendConfirmation: (email: string) => Promise<void>
   signOut: () => Promise<void>
   enterDemo: () => void
 }
@@ -55,7 +56,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error
       },
       signUp: async (email, password) => {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        })
+        if (error) throw error
+      },
+      resendConfirmation: async (email) => {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        })
         if (error) throw error
       },
       signOut: async () => {
