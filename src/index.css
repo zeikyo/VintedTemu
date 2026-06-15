@@ -57,5 +57,5 @@ a {
 }
 
 .animate-rise {
-  animation: rise 420ms ease-out both;
+  animation: rise 420ms ease-out;
 }
